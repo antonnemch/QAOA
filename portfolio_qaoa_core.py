@@ -13,14 +13,17 @@ import numpy as np
 
 
 def bitstring_to_tuple(bits: Iterable[int]) -> tuple[int, ...]:
+    """Convert an iterable of bits into a tuple of integer bits."""
     return tuple(int(bit) for bit in bits)
 
 
 def bitstring_to_str(bits: Iterable[int]) -> str:
+    """Convert an iterable of bits into a compact bitstring."""
     return "".join(str(int(bit)) for bit in bits)
 
 
 def validate_portfolio_inputs(mu, Sigma, B):
+    """Validate and normalize portfolio return, covariance, and budget inputs."""
     mu_arr = np.asarray(mu, dtype=float)
     sigma_arr = np.asarray(Sigma, dtype=float)
 
@@ -42,6 +45,7 @@ def validate_portfolio_inputs(mu, Sigma, B):
 
 
 def get_default_worked_example():
+    """Return the small hand-written portfolio instance used for checks."""
     mu = np.array([0.10, 0.20, 0.15], dtype=float)
     sigma = np.array(
         [
@@ -71,6 +75,7 @@ def generate_random_portfolio_instance(
     variance_high=0.10,
     corr_scale=0.25,
 ):
+    """Generate a seeded random mean-variance portfolio instance."""
     if int(n_assets) <= 0:
         raise ValueError("n_assets must be positive.")
     if corr_scale < 0.0 or corr_scale > 1.0:
@@ -93,35 +98,42 @@ def generate_random_portfolio_instance(
 
 
 def enumerate_bitstrings(n_assets):
+    """Enumerate all binary portfolios for a given asset count."""
     return list(itertools.product([0, 1], repeat=int(n_assets)))
 
 
 def expected_return(x, mu):
+    """Compute the expected return of a binary portfolio."""
     x_arr = np.asarray(x, dtype=float)
     mu_arr = np.asarray(mu, dtype=float)
     return float(mu_arr @ x_arr)
 
 
 def portfolio_variance(x, Sigma):
+    """Compute the variance of a binary portfolio."""
     x_arr = np.asarray(x, dtype=float)
     sigma_arr = np.asarray(Sigma, dtype=float)
     return float(x_arr @ sigma_arr @ x_arr)
 
 
 def portfolio_cost(x, mu, Sigma, q):
+    """Compute the unconstrained mean-variance portfolio objective."""
     return float(q * portfolio_variance(x, Sigma) - expected_return(x, mu))
 
 
 def budget_penalty(x, B, lam):
+    """Compute the quadratic penalty for violating the budget constraint."""
     x_arr = np.asarray(x, dtype=float)
     return float(lam * (np.sum(x_arr) - int(B)) ** 2)
 
 
 def penalized_cost(x, mu, Sigma, q, B, lam):
+    """Compute the mean-variance objective plus budget penalty."""
     return float(portfolio_cost(x, mu, Sigma, q) + budget_penalty(x, B, lam))
 
 
 def make_portfolio_record(bits, mu, Sigma, q, B, lam):
+    """Build a metrics record for one candidate portfolio bitstring."""
     bit_tuple = bitstring_to_tuple(bits)
     ret = expected_return(bit_tuple, mu)
     var = portfolio_variance(bit_tuple, Sigma)
@@ -144,6 +156,7 @@ def make_portfolio_record(bits, mu, Sigma, q, B, lam):
 
 
 def efficient_frontier_records(feasible_records):
+    """Return feasible portfolios that are not dominated in risk-return space."""
     frontier = []
     for candidate in feasible_records:
         dominated = False
@@ -168,6 +181,7 @@ def efficient_frontier_records(feasible_records):
 
 
 def bruteforce_portfolio_baseline(mu, Sigma, q, B, lam):
+    """Enumerate all portfolios and identify the best feasible baseline."""
     mu_arr, sigma_arr, budget = validate_portfolio_inputs(mu, Sigma, B)
     all_records = [
         make_portfolio_record(bits, mu_arr, sigma_arr, q, budget, lam)
@@ -195,6 +209,7 @@ def bruteforce_portfolio_baseline(mu, Sigma, q, B, lam):
 
 
 def portfolio_qubo_coeffs(mu, Sigma, q, B, lam):
+    """Derive QUBO constant, linear, and quadratic coefficients analytically."""
     mu_arr, sigma_arr, budget = validate_portfolio_inputs(mu, Sigma, B)
     const = float(lam * (budget**2))
     linear = q * np.diag(sigma_arr) - mu_arr + lam * (1 - 2 * budget)
@@ -208,6 +223,7 @@ def portfolio_qubo_coeffs(mu, Sigma, q, B, lam):
 
 
 def evaluate_qubo_cost(bits, const, linear, quad):
+    """Evaluate QUBO coefficients on a candidate bitstring."""
     x = np.asarray(bits, dtype=float)
     total = float(const + np.asarray(linear, dtype=float) @ x)
     for (i, j), coeff in quad.items():
@@ -216,6 +232,7 @@ def evaluate_qubo_cost(bits, const, linear, quad):
 
 
 def qubo_to_ising(const, linear, quad):
+    """Convert QUBO coefficients to Ising constant, Z, and ZZ terms."""
     linear_arr = np.asarray(linear, dtype=float)
     z_coeffs = -0.5 * linear_arr.astype(float)
     c0 = float(const + 0.5 * np.sum(linear_arr))
@@ -232,6 +249,7 @@ def qubo_to_ising(const, linear, quad):
 
 
 def ising_energy_from_bitstring(bits, c0, z_coeffs, zz_coeffs):
+    """Evaluate the Ising energy associated with a computational basis bitstring."""
     z_values = [1.0 if int(bit) == 0 else -1.0 for bit in bits]
     energy = float(c0)
     for i, coeff in enumerate(np.asarray(z_coeffs, dtype=float)):
@@ -242,6 +260,7 @@ def ising_energy_from_bitstring(bits, c0, z_coeffs, zz_coeffs):
 
 
 def bitstring_cost_table(mu, Sigma, q, B, lam):
+    """Build a penalized-cost lookup table over all bitstrings."""
     mu_arr, sigma_arr, budget = validate_portfolio_inputs(mu, Sigma, B)
     return {
         bits: penalized_cost(bits, mu_arr, sigma_arr, q, budget, lam)
@@ -250,6 +269,7 @@ def bitstring_cost_table(mu, Sigma, q, B, lam):
 
 
 def solve_numerical_ising_from_cost_table(cost_table, n_assets):
+    """Recover Ising coefficients numerically from a full cost table."""
     basis_terms = [("I",)]
     basis_terms.extend(("Z", i) for i in range(int(n_assets)))
     basis_terms.extend(
@@ -286,6 +306,7 @@ def solve_numerical_ising_from_cost_table(cost_table, n_assets):
 
 
 def compare_analytical_and_numerical_ising(mu, Sigma, q, B, lam):
+    """Compare analytical and numerical Ising coefficient derivations."""
     const, linear, quad = portfolio_qubo_coeffs(mu, Sigma, q, B, lam)
     analytical = qubo_to_ising(const, linear, quad)
     numerical = solve_numerical_ising_from_cost_table(
@@ -310,6 +331,7 @@ def compare_analytical_and_numerical_ising(mu, Sigma, q, B, lam):
 
 
 def extract_sampling_metrics(samples, mu, Sigma, q, B, lam, classical_result, top_k=10):
+    """Summarize sampled bitstrings against the classical portfolio baseline."""
     sample_array = np.asarray(samples, dtype=int)
     if sample_array.ndim == 1:
         sample_array = sample_array.reshape(1, -1)
@@ -362,6 +384,7 @@ def extract_sampling_metrics(samples, mu, Sigma, q, B, lam, classical_result, to
 
 
 def summary_record(param_name, param_value, run_result):
+    """Flatten one run result into a compact sweep-summary record."""
     best_feasible_sampled = run_result["samples"]["best_feasible_sampled"]
     best_sampled = run_result["samples"]["best_sampled"]
     classical_best = run_result["classical"]["best_feasible"]
@@ -391,11 +414,13 @@ def summary_record(param_name, param_value, run_result):
 
 
 def instance_kwargs_from_config(config):
+    """Extract portfolio-instance generation arguments from a config dictionary."""
     keys = ["return_low", "return_high", "variance_low", "variance_high", "corr_scale"]
     return {key: config[key] for key in keys if key in config}
 
 
 def apply_budget_rule(config):
+    """Resolve any dynamic budget rule in a run configuration."""
     budget_rule = config.get("budget_rule")
     if budget_rule is None:
         return config
@@ -409,6 +434,7 @@ def apply_budget_rule(config):
 
 
 def resolve_instance_for_run(config, param_name, base_instance_seed):
+    """Create the portfolio instance used for one configured run."""
     if param_name != "n_assets" and "mu" in config and "Sigma" in config:
         return np.asarray(config["mu"], dtype=float), np.asarray(config["Sigma"], dtype=float)
 
@@ -429,6 +455,7 @@ def resolve_instance_for_run(config, param_name, base_instance_seed):
 
 
 def build_runner_inputs(config, mu, Sigma, seed):
+    """Assemble positional and keyword inputs for a QAOA experiment runner."""
     return {
         "mu": mu,
         "Sigma": Sigma,
@@ -452,6 +479,7 @@ def sweep_parameter_with_runner(
     seed=None,
     runner_kwargs_builder: Callable | None = None,
 ):
+    """Run a one-dimensional hyperparameter sweep with a supplied runner."""
     if not values:
         raise ValueError("values must be a non-empty list.")
 
@@ -489,6 +517,7 @@ def sweep_parameter_with_runner(
 
 
 def aggregate_noisy_runs(runs, extra_fields=None):
+    """Average noisy-run metrics and attach variability summaries."""
     if not runs:
         raise ValueError("runs must contain at least one QAOA result.")
 
@@ -514,6 +543,7 @@ def aggregate_noisy_runs(runs, extra_fields=None):
 
 
 def build_noisy_instance_catalog(config_template, instance_seeds):
+    """Create reusable random instances for noisy robustness studies."""
     if "mu" in config_template and "Sigma" in config_template:
         return [
             {
@@ -539,6 +569,7 @@ def build_noisy_instance_catalog(config_template, instance_seeds):
 
 
 def validate_config_budget(config):
+    """Validate a config budget against the configured asset count."""
     if int(config["B"]) < 0 or int(config["B"]) > int(config["n_assets"]):
         raise ValueError(
             f"Budget B={config['B']} must satisfy 0 <= B <= n_assets={config['n_assets']}."
@@ -551,6 +582,7 @@ def run_config_on_instances_with_runner(
     instance_catalog,
     runner_kwargs_builder: Callable | None = None,
 ):
+    """Run one config across a catalog of portfolio instances."""
     validate_config_budget(config)
     runs = []
 
@@ -574,6 +606,7 @@ def sweep_noisy_hyperparam_with_runner(
     instance_seeds=(0, 1, 2),
     runner_kwargs_builder: Callable | None = None,
 ):
+    """Sweep one noisy-study parameter across repeated random instances."""
     if not values:
         raise ValueError("values must be a non-empty list.")
 
@@ -618,10 +651,12 @@ def sweep_noisy_hyperparam_with_runner(
 
 
 def cartesian_hyperparameter_keys():
+    """Return the supported keys for Cartesian noisy hyperparameter searches."""
     return ["p", "lam", "shots", "stepsize", "n_steps"]
 
 
 def cartesian_configurations(sweep_space):
+    """Yield every configuration in a Cartesian hyperparameter grid."""
     keys = cartesian_hyperparameter_keys()
     missing_keys = [key for key in keys if key not in sweep_space]
     if missing_keys:
@@ -639,6 +674,7 @@ def cartesian_configurations(sweep_space):
 
 
 def noisy_record_sort_key(record):
+    """Sort noisy-search records by quality and stability metrics."""
     return (
         -record["mean_classical_optimum_prob"],
         -record["mean_feasible_sample_rate"],
@@ -659,6 +695,7 @@ def run_noisy_cartesian_sweep_with_runner(
     instance_seeds=(0, 1, 2),
     runner_kwargs_builder: Callable | None = None,
 ):
+    """Run and rank a full Cartesian noisy hyperparameter sweep."""
     config_template = deepcopy(base_config)
     config_template = apply_budget_rule(config_template)
     instance_catalog = build_noisy_instance_catalog(config_template, instance_seeds)
@@ -705,6 +742,7 @@ def run_noisy_cartesian_sweep_with_runner(
 
 
 def sweep_xlabel(param_name):
+    """Return a readable x-axis label for a sweep parameter."""
     labels = {
         "p": "QAOA depth p",
         "lam": "Penalty strength lambda",
@@ -719,6 +757,7 @@ def sweep_xlabel(param_name):
 
 
 def print_noisy_sweep_summary_table(sweep_result):
+    """Print a compact table for noisy sweep results."""
     records = sweep_result["records"]
     if not records:
         raise ValueError("sweep_result['records'] must contain at least one row.")
@@ -774,6 +813,7 @@ def print_noisy_sweep_summary_table(sweep_result):
 
 
 def save_noisy_sweep_results_csv(sweep_result, output_dir="noisy_results", prefix="noisy_sweep"):
+    """Write noisy sweep summary records to a timestamped CSV file."""
     records = sweep_result["records"]
     if not records:
         raise ValueError("sweep_result['records'] must contain at least one row.")
@@ -823,6 +863,7 @@ def save_noisy_sweep_results_csv(sweep_result, output_dir="noisy_results", prefi
 
 
 def import_pandas():
+    """Import pandas with a clearer error message for optional post-processing."""
     try:
         import pandas as pd
     except ImportError as exc:
@@ -833,10 +874,12 @@ def import_pandas():
 
 
 def normalized_column_name(name):
+    """Normalize a column name for flexible CSV matching."""
     return "".join(ch for ch in str(name).lower() if ch.isalnum())
 
 
 def search_result_column_candidates():
+    """Return accepted aliases for saved search-result columns."""
     return {
         "p": ["p", "depth", "qaoadepth"],
         "lam": ["lam", "lambda", "penalty", "penaltylambda", "penaltystrength"],
@@ -858,6 +901,7 @@ def search_result_column_candidates():
 
 
 def resolve_search_result_columns(dataframe, column_mapping=None):
+    """Map available CSV columns to canonical post-processing fields."""
     normalized_lookup = {normalized_column_name(column): column for column in dataframe.columns}
     resolved = {}
     candidates = search_result_column_candidates()
@@ -895,6 +939,7 @@ def resolve_search_result_columns(dataframe, column_mapping=None):
 
 
 def infer_search_result_dataset_label(dataframe, fallback_name):
+    """Infer a short dataset label from loaded search-result metadata."""
     if "n_assets" not in dataframe.columns:
         return str(fallback_name)
 
@@ -911,6 +956,7 @@ def infer_search_result_dataset_label(dataframe, fallback_name):
 
 
 def load_search_results(csv_path_1, csv_path_2, column_mapping=None):
+    """Load and normalize two saved noisy-search CSV files."""
     pd = import_pandas()
     path_1 = Path(csv_path_1).expanduser().resolve()
     path_2 = Path(csv_path_2).expanduser().resolve()
@@ -948,6 +994,7 @@ def load_search_results(csv_path_1, csv_path_2, column_mapping=None):
 
 
 def search_objective_specs(resolved_columns):
+    """Describe the objective columns available for search-result analysis."""
     return [
         {
             "key": "classical_optimum_probability",
@@ -965,6 +1012,7 @@ def search_objective_specs(resolved_columns):
 
 
 def available_search_hyperparameters(resolved_columns):
+    """List canonical hyperparameters present in a loaded search dataset."""
     return [
         hyperparam
         for hyperparam in ["p", "lam", "shots", "stepsize", "n_steps"]
@@ -973,6 +1021,7 @@ def available_search_hyperparameters(resolved_columns):
 
 
 def sorted_hyperparameter_values(series):
+    """Sort mixed numeric and categorical hyperparameter values for plotting."""
     pd = import_pandas()
     unique_values = [value for value in pd.unique(series.dropna())]
     if not unique_values:
@@ -987,18 +1036,21 @@ def sorted_hyperparameter_values(series):
 
 
 def format_hyperparameter_tick(value):
+    """Format a hyperparameter value for display on plots."""
     if isinstance(value, float):
         return f"{value:g}"
     return str(value)
 
 
 def topk_frequency_summary(dataframe, hyperparam_column, objective_column, top_k, ordered_values):
+    """Count which hyperparameter values appear most often in top-k records."""
     topk_frame = dataframe.sort_values(by=objective_column, ascending=False).head(int(top_k))
     counts = topk_frame[hyperparam_column].value_counts(normalize=True, dropna=False)
     return counts.reindex(ordered_values, fill_value=0.0).astype(float)
 
 
 def score_weighted_summary(dataframe, hyperparam_column, objective_column, ordered_values):
+    """Aggregate score-weighted hyperparameter importance across records."""
     grouped = dataframe.groupby(hyperparam_column, dropna=False)[objective_column].sum()
     grouped = grouped.reindex(ordered_values, fill_value=0.0).astype(float)
     total_weight = float(grouped.sum())
@@ -1010,6 +1062,7 @@ def score_weighted_summary(dataframe, hyperparam_column, objective_column, order
 
 
 def prepare_postprocess_output_dir(output_dir):
+    """Create and return the directory used for post-processing figures."""
     if output_dir is None:
         return None
 
@@ -1025,6 +1078,7 @@ def plot_topk_hyperparam_frequencies(
     output_dir=None,
     column_mapping=None,
 ):
+    """Plot top-k hyperparameter frequencies from saved search CSVs."""
     if int(top_k) <= 0:
         raise ValueError("top_k must be positive.")
 
@@ -1101,6 +1155,7 @@ def plot_score_weighted_hyperparam_distributions(
     output_dir=None,
     column_mapping=None,
 ):
+    """Plot score-weighted hyperparameter distributions from saved CSVs."""
     pd = import_pandas()
     loaded = load_search_results(csv_path_1, csv_path_2, column_mapping=column_mapping)
     dataframe = loaded["dataframe"]
@@ -1167,11 +1222,13 @@ def plot_score_weighted_hyperparam_distributions(
 
 
 def _grouped_bar_offsets(n_series, width):
+    """Compute centered offsets for grouped bar plots."""
     center = 0.5 * (n_series - 1)
     return [(idx - center) * width for idx in range(n_series)]
 
 
 def _bar_axis_upper_limit(*value_groups):
+    """Choose a padded upper y-limit for bar-chart values."""
     maxima = [float(np.max(values)) for values in value_groups if len(values)]
     max_value = max(maxima) if maxima else 0.0
     if max_value <= 0.0:
@@ -1180,6 +1237,7 @@ def _bar_axis_upper_limit(*value_groups):
 
 
 def _line_axis_upper_limit(*value_groups):
+    """Choose a padded upper y-limit for line-chart values."""
     maxima = [float(np.max(values)) for values in value_groups if len(values)]
     max_value = max(maxima) if maxima else 0.0
     if max_value <= 0.0:
@@ -1188,17 +1246,20 @@ def _line_axis_upper_limit(*value_groups):
 
 
 def _dataset_line_style(dataset_index):
+    """Return the line style for a dataset index."""
     line_styles = ["-", "--", "-.", ":"]
     markers = ["o", "s", "^", "D"]
     return line_styles[dataset_index % len(line_styles)], markers[dataset_index % len(markers)]
 
 
 def _line_label_offset(series_index):
+    """Return the label offset used for line annotations."""
     offsets = [8, 18, 28, 38, 48, 58]
     return offsets[series_index] if series_index < len(offsets) else 8 + 10 * series_index
 
 
 def _annotate_line_series(ax, x_positions, y_values, series_index, color):
+    """Annotate points in a plotted line series."""
     label_offset = _line_label_offset(series_index)
     for x_value, y_value in zip(x_positions, y_values):
         ax.annotate(
@@ -1220,6 +1281,7 @@ def _annotate_line_series(ax, x_positions, y_values, series_index, color):
 
 
 def _combined_ordered_hyperparameter_values(datasets, hyperparam_column):
+    """Combine ordered hyperparameter values across datasets."""
     pd = import_pandas()
     combined_series = pd.concat(
         [dataset["dataframe"][hyperparam_column] for dataset in datasets],
@@ -1233,6 +1295,7 @@ def _build_combined_postprocess_figures(
     top_k,
     output_dir=None,
 ):
+    """Build combined post-processing figures for each hyperparameter."""
     pd = import_pandas()
     resolved_columns = loaded["resolved_columns"]
     datasets = loaded["datasets"]
@@ -1405,6 +1468,7 @@ def postprocess_saved_search_results(
     output_dir=None,
     column_mapping=None,
 ):
+    """Generate summary figures from two saved Cartesian-search CSV files."""
     loaded = load_search_results(csv_path_1, csv_path_2, column_mapping=column_mapping)
     combined_result = _build_combined_postprocess_figures(
         loaded,
@@ -1428,6 +1492,7 @@ def postprocess_saved_search_results(
 
 
 def plot_noisy_optimum_probability(sweep_result, ax=None):
+    """Plot optimum-sampling probability from a noisy sweep result."""
     if ax is None:
         _, ax = plt.subplots(figsize=(6, 4))
 
@@ -1446,6 +1511,7 @@ def plot_noisy_optimum_probability(sweep_result, ax=None):
 
 
 def plot_noisy_feasible_sample_rate(sweep_result, ax=None):
+    """Plot feasible-sample rate from a noisy sweep result."""
     if ax is None:
         _, ax = plt.subplots(figsize=(6, 4))
 
@@ -1472,6 +1538,7 @@ def plot_noisy_feasible_sample_rate(sweep_result, ax=None):
 
 
 def plot_noisy_sweep_combined(sweep_result, ax=None):
+    """Plot noisy optimum probability and feasibility side by side."""
     if ax is None:
         _, ax = plt.subplots(figsize=(7, 4))
 
@@ -1518,6 +1585,7 @@ def plot_noisy_sweep_combined(sweep_result, ax=None):
 
 
 def plot_optimization_convergence(run_result_or_runs, ax=None):
+    """Plot expected-cost convergence for one run or repeated runs."""
     if ax is None:
         _, ax = plt.subplots(figsize=(7, 4))
 
@@ -1543,6 +1611,7 @@ def plot_optimization_convergence(run_result_or_runs, ax=None):
 
 
 def plot_bitstring_distribution(run_result, top_k=10, ax=None):
+    """Plot the most common sampled bitstrings from a run result."""
     if ax is None:
         _, ax = plt.subplots(figsize=(8, 4))
 
@@ -1571,6 +1640,7 @@ def plot_bitstring_distribution(run_result, top_k=10, ax=None):
 
 
 def plot_feasible_rate_vs_lambda(sweep_result, ax=None):
+    """Plot feasible-sample rate as a function of penalty strength."""
     if ax is None:
         _, ax = plt.subplots(figsize=(6, 4))
 
@@ -1587,6 +1657,7 @@ def plot_feasible_rate_vs_lambda(sweep_result, ax=None):
 
 
 def plot_depth_study(sweep_result, axes=None):
+    """Plot QAOA depth-study metrics from a sweep result."""
     if axes is None:
         _, axes = plt.subplots(1, 2, figsize=(11, 4))
 
@@ -1616,6 +1687,7 @@ def plot_depth_study(sweep_result, axes=None):
 
 
 def plot_risk_aversion_study(sweep_result, ax=None):
+    """Plot sweep metrics for the risk-aversion parameter."""
     if ax is None:
         _, ax = plt.subplots(figsize=(7, 4))
 
@@ -1648,6 +1720,7 @@ def plot_risk_aversion_study(sweep_result, ax=None):
 
 
 def plot_asset_count_study(sweep_result, axes=None):
+    """Plot sweep metrics as the number of assets changes."""
     if axes is None:
         _, axes = plt.subplots(1, 2, figsize=(11, 4))
 
@@ -1692,6 +1765,7 @@ def plot_asset_count_study(sweep_result, axes=None):
 
 
 def plot_risk_return_scatter(classical_result, highlight_bitstring=None, show_frontier=True, ax=None):
+    """Plot feasible portfolios in risk-return space with optional frontier highlighting."""
     if ax is None:
         _, ax = plt.subplots(figsize=(6, 4))
 

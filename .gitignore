@@ -28,7 +28,7 @@ pennylane/noisy_results/
 noisy_results/
 
 # Generated figures and data exports
-*.png
+# *.png
 *.jpg
 *.jpeg
 *.gif

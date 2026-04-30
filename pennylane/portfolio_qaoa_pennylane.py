@@ -19,6 +19,7 @@ from portfolio_qaoa_core import (
 
 
 def build_cost_hamiltonian(c0, z_coeffs, zz_coeffs, tol=1e-12):
+    """Build a PennyLane Hamiltonian from Ising coefficients."""
     coeffs = []
     ops = []
 
@@ -44,10 +45,12 @@ def build_cost_hamiltonian(c0, z_coeffs, zz_coeffs, tol=1e-12):
 
 
 def make_x_mixer(n_wires):
+    """Build the standard X mixer Hamiltonian for QAOA."""
     return qml.qaoa.x_mixer(wires=range(int(n_wires)))
 
 
 def normalize_noise_mode(noise_mode):
+    """Normalize user-facing noise-mode values."""
     if isinstance(noise_mode, str):
         normalized = noise_mode.strip().lower()
     elif noise_mode is True:
@@ -66,6 +69,7 @@ def normalize_noise_mode(noise_mode):
 
 
 def apply_layer_noise(noise_mode, noise_strength, n_wires):
+    """Apply per-wire depolarizing noise for one QAOA layer."""
     normalized_mode = normalize_noise_mode(noise_mode)
     probability = float(noise_strength)
 
@@ -87,6 +91,7 @@ def apply_qaoa_ansatz(
     noise_mode="ideal",
     noise_strength=0.0,
 ):
+    """Apply the alternating QAOA cost and mixer layers."""
     if params.shape[0] != 2 * int(p):
         raise ValueError(f"Expected {2 * int(p)} parameters for p={p}, got {params.shape[0]}.")
 
@@ -111,6 +116,7 @@ def create_qaoa_qnodes(
     noise_strength=0.0,
     device_seed=None,
 ):
+    """Create optimization and sampling QNodes for one QAOA problem."""
     normalized_noise_mode = normalize_noise_mode(noise_mode)
     device_name = (
         "default.mixed" if normalized_noise_mode == "layer_depolarizing" else "default.qubit"
@@ -153,6 +159,7 @@ def create_qaoa_qnodes(
 
 
 def build_optimizer(optimizer_name, stepsize):
+    """Create the requested PennyLane optimizer."""
     name = str(optimizer_name).lower()
     if name == "adam":
         return qml.AdamOptimizer(stepsize=stepsize)
@@ -174,6 +181,7 @@ def optimize_qaoa(
     noise_strength=0.0,
     device_seed=None,
 ):
+    """Optimize QAOA parameters on a PennyLane simulator."""
     expectation_qnode, _ = create_qaoa_qnodes(
         cost_h,
         mixer_h,
@@ -234,6 +242,7 @@ def run_qaoa_experiment(
     noise_strength=0.0,
     device_seed=None,
 ):
+    """Run the full PennyLane QAOA workflow and return structured results."""
     mu_arr, sigma_arr, budget = validate_portfolio_inputs(mu, Sigma, B)
     n_assets = len(mu_arr)
     normalized_noise_mode = normalize_noise_mode(noise_mode)
@@ -315,6 +324,7 @@ def run_qaoa_experiment(
 
 
 def pennylane_runner_kwargs(config):
+    """Extract PennyLane runner keyword arguments from a config dictionary."""
     return {
         "noise_mode": config.get("noise_mode", "ideal"),
         "noise_strength": config.get("noise_strength", 0.0),
@@ -323,6 +333,7 @@ def pennylane_runner_kwargs(config):
 
 
 def sweep_parameter(base_config, param_name, values, seed=None):
+    """Run a one-parameter PennyLane sweep."""
     return sweep_parameter_with_runner(
         run_qaoa_experiment,
         base_config,
@@ -334,6 +345,7 @@ def sweep_parameter(base_config, param_name, values, seed=None):
 
 
 def sweep_noisy_hyperparam(base_config, param_name, values, instance_seeds=(0, 1, 2)):
+    """Run a noisy PennyLane hyperparameter sweep across repeated instances."""
     return sweep_noisy_hyperparam_with_runner(
         run_qaoa_experiment,
         base_config,
@@ -345,6 +357,7 @@ def sweep_noisy_hyperparam(base_config, param_name, values, instance_seeds=(0, 1
 
 
 def run_noisy_cartesian_sweep(base_config, sweep_space, instance_seeds=(0, 1, 2)):
+    """Run a Cartesian noisy hyperparameter search with the PennyLane runner."""
     return run_noisy_cartesian_sweep_with_runner(
         run_qaoa_experiment,
         base_config,

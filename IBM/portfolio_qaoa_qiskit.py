@@ -26,6 +26,7 @@ from portfolio_qaoa_core import (
 
 
 def pauli_label(n_qubits, z_positions):
+    """Build a Qiskit Pauli label with Z operators at selected qubits."""
     chars = ["I"] * int(n_qubits)
     for qubit in z_positions:
         chars[int(n_qubits) - 1 - int(qubit)] = "Z"
@@ -33,6 +34,7 @@ def pauli_label(n_qubits, z_positions):
 
 
 def build_qiskit_cost_operator(c0, z_coeffs, zz_coeffs, tol=1e-12, include_constant=True):
+    """Build a SparsePauliOp cost Hamiltonian from Ising coefficients."""
     z_array = np.asarray(z_coeffs, dtype=float)
     n_qubits = len(z_array)
     terms = []
@@ -55,6 +57,7 @@ def build_qiskit_cost_operator(c0, z_coeffs, zz_coeffs, tol=1e-12, include_const
 
 
 def strip_identity_from_operator(operator, tol=1e-12):
+    """Remove the identity term from a cost operator for circuit evolution."""
     filtered_terms = []
     for label, coeff in operator.to_list():
         if set(label) == {"I"}:
@@ -68,6 +71,7 @@ def strip_identity_from_operator(operator, tol=1e-12):
 
 
 def build_qaoa_ansatz_circuit(cost_operator, n_qubits, p, add_measurements=False):
+    """Construct a parameterized Qiskit QAOA ansatz circuit."""
     circuit = QuantumCircuit(int(n_qubits), int(n_qubits) if add_measurements else 0)
     gammas = ParameterVector("gamma", int(p))
     betas = ParameterVector("beta", int(p))
@@ -94,6 +98,7 @@ def build_qaoa_ansatz_circuit(cost_operator, n_qubits, p, add_measurements=False
 
 
 def build_bound_measured_qaoa_circuit(cost_operator, n_qubits, p, parameter_values):
+    """Bind QAOA parameters and add measurements for sampling."""
     measured_ansatz = build_qaoa_ansatz_circuit(
         cost_operator,
         n_qubits,
@@ -112,6 +117,7 @@ def build_bound_measured_qaoa_circuit(cost_operator, n_qubits, p, parameter_valu
 
 
 def generate_initial_qaoa_parameters(p, seed=None):
+    """Generate seeded initial gamma and beta parameters."""
     if int(p) == 0:
         return np.asarray([], dtype=float)
     rng = np.random.default_rng(seed)
@@ -119,6 +125,7 @@ def generate_initial_qaoa_parameters(p, seed=None):
 
 
 def bind_qaoa_parameters(circuit, parameter_order, values):
+    """Bind a flat parameter vector into a QAOA circuit."""
     values = np.asarray(values, dtype=float)
     if len(parameter_order) != len(values):
         raise ValueError(
@@ -130,6 +137,7 @@ def bind_qaoa_parameters(circuit, parameter_order, values):
 
 
 def expectation_from_statevector(bound_circuit, cost_operator, estimator=None):
+    """Estimate the cost expectation for a bound circuit using statevector primitives."""
     estimator = StatevectorEstimator() if estimator is None else estimator
     result = estimator.run([(bound_circuit, cost_operator)]).result()
     value = result[0].data.evs
@@ -138,6 +146,7 @@ def expectation_from_statevector(bound_circuit, cost_operator, estimator=None):
 
 
 def extract_counts_from_pub_result(pub_result):
+    """Extract measurement counts from a runtime primitive result."""
     for register_data in pub_result.data.values():
         if hasattr(register_data, "get_counts"):
             try:
@@ -149,6 +158,7 @@ def extract_counts_from_pub_result(pub_result):
 
 
 def counts_to_samples(counts, n_qubits):
+    """Expand bitstring counts into repeated sample tuples."""
     rows = []
     for bitstring, count in counts.items():
         bit_tuple = tuple(int(bit) for bit in str(bitstring)[::-1])
@@ -164,6 +174,7 @@ def counts_to_samples(counts, n_qubits):
 
 
 def normalized_probability_vector(counts, ordered_bitstrings):
+    """Return probabilities for ordered bitstrings from raw counts."""
     total_shots = sum(int(count) for count in counts.values())
     if total_shots <= 0:
         return np.zeros(len(ordered_bitstrings), dtype=float)
@@ -174,12 +185,14 @@ def normalized_probability_vector(counts, ordered_bitstrings):
 
 
 def sample_counts_statevector(bound_measured_circuit, shots, seed=None):
+    """Sample a measured circuit with the local statevector sampler."""
     sampler = StatevectorSampler(seed=seed)
     result = sampler.run([bound_measured_circuit], shots=int(shots)).result()
     return extract_counts_from_pub_result(result[0])
 
 
 def get_ibm_runtime_service(channel=None, instance=None):
+    """Create an IBM Runtime service using optional channel and instance settings."""
     kwargs = {}
     if channel is not None:
         kwargs["channel"] = channel
@@ -195,6 +208,7 @@ def resolve_runtime_backend(
     min_num_qubits=None,
     instance=None,
 ):
+    """Resolve an explicit backend or backend name for runtime execution."""
     if backend is not None:
         return backend
     service = get_ibm_runtime_service(instance=instance) if service is None else service
@@ -209,6 +223,7 @@ def resolve_runtime_backend(
 
 
 def select_ibm_backend(service=None, backend_name=None, min_num_qubits=None, instance=None):
+    """Select an IBM backend that satisfies the requested qubit count."""
     return resolve_runtime_backend(
         backend=None,
         backend_name=backend_name,
@@ -218,15 +233,18 @@ def select_ibm_backend(service=None, backend_name=None, min_num_qubits=None, ins
     )
 
 def backend_name_or_str(backend):
+    """Return a readable backend name."""
     name = getattr(backend, "name", None)
     return name() if callable(name) else name
 
 
 def count_two_qubit_gates(circuit):
+    """Count two-qubit gates in a transpiled circuit."""
     return sum(1 for instruction in circuit.data if instruction.operation.num_qubits == 2)
 
 
 def json_safe(value):
+    """Convert nested run metadata into JSON-serializable values."""
     if isinstance(value, dict):
         return {str(key): json_safe(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
@@ -245,6 +263,7 @@ def json_safe(value):
 
 
 def circuit_resource_summary(circuit):
+    """Summarize circuit size, depth, width, and operation counts."""
     return {
         "depth": int(circuit.depth()),
         "size": int(circuit.size()),
@@ -254,6 +273,7 @@ def circuit_resource_summary(circuit):
 
 
 def summarize_transpiled_circuit(circuit, backend):
+    """Transpile a circuit and summarize the hardware-level resources."""
     transpiled_circuit = transpile(circuit, backend=backend)
     gate_counts = {str(name): int(count) for name, count in transpiled_circuit.count_ops().items()}
     two_qubit_gate_breakdown = {
@@ -276,6 +296,7 @@ def summarize_transpiled_circuit(circuit, backend):
 
 
 def summarize_transpiled_bound_qaoa_circuit(cost_operator, n_qubits, p, parameter_values, backend):
+    """Summarize a bound QAOA circuit after backend transpilation."""
     bound_info = build_bound_measured_qaoa_circuit(
         cost_operator=cost_operator,
         n_qubits=n_qubits,
@@ -288,16 +309,19 @@ def summarize_transpiled_bound_qaoa_circuit(cost_operator, n_qubits, p, paramete
 
 
 def timestamped_run_id(prefix="ibm_run"):
+    """Create a timestamped identifier for saved run artifacts."""
     return f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
 
 def ensure_output_dir(output_dir):
+    """Create and return an output directory path."""
     path = Path(output_dir).expanduser().resolve()
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
 def save_json_artifact(payload, output_dir, filename):
+    """Save a JSON artifact and return its path."""
     output_path = ensure_output_dir(output_dir)
     artifact_path = output_path / filename
     with artifact_path.open("w", encoding="utf-8") as handle:
@@ -306,6 +330,7 @@ def save_json_artifact(payload, output_dir, filename):
 
 
 def save_figure_artifact(fig, output_dir, filename):
+    """Save a Matplotlib figure artifact and return its path."""
     output_path = ensure_output_dir(output_dir)
     artifact_path = output_path / filename
     fig.savefig(artifact_path, bbox_inches="tight")
@@ -313,6 +338,7 @@ def save_figure_artifact(fig, output_dir, filename):
 
 
 def summarize_run_for_logging(result, run_id, mode_label=None):
+    """Build a compact JSON-friendly summary for a completed run."""
     best_sampled = result["samples"].get("best_sampled")
     best_feasible_sampled = result["samples"].get("best_feasible_sampled")
     return {
@@ -337,6 +363,7 @@ def summarize_run_for_logging(result, run_id, mode_label=None):
 
 
 def hardware_loop_warnings(n_assets, p, shots, n_steps):
+    """Return warnings for expensive or risky hardware-loop settings."""
     warnings = []
     if int(n_assets) > 3:
         warnings.append("n_assets > 3 can be expensive on IBM Open Plan.")
@@ -350,6 +377,7 @@ def hardware_loop_warnings(n_assets, p, shots, n_steps):
 
 
 def estimate_hardware_loop_cost(p, shots, n_steps):
+    """Estimate runtime job count and shot usage for a hardware optimization loop."""
     n_params = 2 * int(p)
     if int(p) == 0:
         objective_evaluations = 1
@@ -373,6 +401,7 @@ def sample_counts_runtime(
     instance=None,
     return_metadata=False,
 ):
+    """Run final circuit sampling through IBM Runtime sampler primitives."""
     runtime_backend = resolve_runtime_backend(
         backend=backend,
         backend_name=backend_name,
@@ -402,6 +431,7 @@ def sample_counts_runtime(
 
 
 def empirical_average_penalized_cost_from_counts(counts, mu, Sigma, q, B, lam):
+    """Compute average penalized cost from measured counts."""
     total_shots = sum(int(count) for count in counts.values())
     if total_shots <= 0:
         raise ValueError("counts must contain at least one sampled bitstring.")
@@ -426,6 +456,7 @@ def sample_fixed_qaoa_circuit(
     runtime_service=None,
     runtime_instance=None,
 ):
+    """Sample fixed QAOA parameters locally or through IBM Runtime."""
     bound_info = build_bound_measured_qaoa_circuit(
         cost_operator=cost_operator,
         n_qubits=n_qubits,
@@ -465,6 +496,7 @@ def sample_fixed_qaoa_circuit(
 
 
 def ordered_bitstrings_from_counts(*counts_dicts):
+    """Return a stable bitstring ordering for probability comparison plots."""
     bitstrings = sorted({bitstring for counts in counts_dicts for bitstring in counts.keys()})
     return bitstrings
 
@@ -475,6 +507,7 @@ def plot_local_vs_ibm_probability_comparison(
     ax=None,
     title="Local vs IBM sampled probabilities",
 ):
+    """Plot local and IBM sampled probabilities for matching bitstrings."""
     if ax is None:
         _, ax = plt.subplots(figsize=(9, 4))
 
@@ -513,6 +546,7 @@ def plot_local_vs_ibm_probability_comparison(
 
 
 def build_optimizer_state(optimizer_name, n_params):
+    """Initialize state storage for the selected classical optimizer."""
     name = str(optimizer_name).lower()
     if name not in {"adam", "gradient_descent"}:
         raise ValueError("optimizer_name must be 'adam' or 'gradient_descent'.")
@@ -525,6 +559,7 @@ def build_optimizer_state(optimizer_name, n_params):
 
 
 def finite_difference_gradient(objective, params, epsilon=1e-4):
+    """Estimate a gradient with central finite differences."""
     gradient = np.zeros_like(params, dtype=float)
     for idx in range(len(params)):
         offset = np.zeros_like(params, dtype=float)
@@ -536,6 +571,7 @@ def finite_difference_gradient(objective, params, epsilon=1e-4):
 
 
 def optimizer_step(params, gradient, stepsize, state):
+    """Apply one classical optimizer update step."""
     name = state["name"]
     if name == "gradient_descent":
         return params - float(stepsize) * gradient
@@ -560,6 +596,7 @@ def optimize_qaoa_qiskit(
     seed=None,
     optimizer_name="adam",
 ):
+    """Optimize QAOA parameters with local statevector expectation values."""
     ansatz_info = build_qaoa_ansatz_circuit(cost_operator, n_qubits, p, add_measurements=False)
     circuit = ansatz_info["circuit"]
     parameter_order = ansatz_info["parameter_order"]
@@ -627,6 +664,7 @@ def optimize_qaoa_qiskit_hardware_in_loop(
     instance=None,
     spsa_perturbation=0.15,
 ):
+    """Optimize QAOA parameters using hardware-sampled objective estimates."""
     ansatz_info = build_qaoa_ansatz_circuit(cost_operator, n_qubits, p, add_measurements=True)
     circuit = ansatz_info["circuit"]
     parameter_order = ansatz_info["parameter_order"]
@@ -734,6 +772,7 @@ def run_qaoa_experiment_qiskit(
     allow_hardware_loop=False,
     spsa_perturbation=0.15,
 ):
+    """Run the full Qiskit QAOA workflow and return structured results."""
     mu_arr, sigma_arr, budget = validate_portfolio_inputs(mu, Sigma, B)
     n_assets = len(mu_arr)
     execution_mode = str(execution_mode).strip().lower()
