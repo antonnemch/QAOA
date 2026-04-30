@@ -1,0 +1,42 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local secrets and credentials
+.env
+.env.*
+*.pem
+*.key
+qiskit-ibm.json
+
+# Generated experiment outputs
+IBM/outputs/
+pennylane/noisy_results/
+noisy_results/
+
+# Generated figures and data exports
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.csv
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
